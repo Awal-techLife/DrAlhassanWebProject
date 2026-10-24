@@ -361,8 +361,69 @@ router.post('/paystack-verify', async (req, res) => {
   }
 });
 
-// GET /api/access/payments — admin only: view all Paystack transactions
-router.get('/payments', authMiddleware, (req, res) => {
+// GET /api/access/payments — admin only: view all Paystack transactions (auto-syncs recent Paystack transactions)
+router.get('/payments', authMiddleware, async (req, res) => {
+  // Background/Inline sync with Paystack API if PAYSTACK_SECRET_KEY is present
+  const PAYSTACK_SECRET = process.env.PAYSTACK_SECRET_KEY;
+  if (PAYSTACK_SECRET) {
+    try {
+      const psRes = await fetch('https://api.paystack.co/transaction?perPage=50', {
+        headers: {
+          Authorization: `Bearer ${PAYSTACK_SECRET}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      const psJson = await psRes.json();
+      if (psJson && psJson.status && Array.isArray(psJson.data)) {
+        const insertTx = db.prepare(`
+          INSERT INTO payments (reference, amount, currency, email, customer_name, channel, status, paid_at, metadata)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(reference) DO UPDATE SET
+            status = excluded.status,
+            paid_at = COALESCE(payments.paid_at, excluded.paid_at)
+        `);
+        const insertToken = db.prepare(`
+          INSERT OR IGNORE INTO access_tokens (token, type, identifier, payment_ref, expires_at)
+          VALUES (?, 'paid', ?, ?, ?)
+        `);
+
+        for (const tx of psJson.data) {
+          if (tx.status === 'success' && tx.reference) {
+            const amountGHS = tx.amount ? tx.amount / 100 : 20.0;
+            const currency = tx.currency || 'GHS';
+            const email = tx.customer?.email || 'customer@paystack.com';
+            const customerName =
+              [tx.customer?.first_name, tx.customer?.last_name].filter(Boolean).join(' ') || 'External Student';
+            const channel = tx.channel || 'mobile_money/card';
+            const paidAt = tx.paid_at || new Date().toISOString();
+
+            insertTx.run(
+              tx.reference,
+              amountGHS,
+              currency,
+              email,
+              customerName,
+              channel,
+              'success',
+              paidAt,
+              JSON.stringify(tx.metadata || {})
+            );
+
+            // Also ensure access token is recorded for the user
+            const existingToken = db.prepare('SELECT token FROM access_tokens WHERE payment_ref = ?').get(tx.reference);
+            if (!existingToken) {
+              const token = generateToken();
+              const expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
+              insertToken.run(token, email, tx.reference, expiresAt);
+            }
+          }
+        }
+      }
+    } catch (syncErr) {
+      console.warn('[Payments Auto-Sync] Could not sync transactions from Paystack:', syncErr.message);
+    }
+  }
+
   try {
     const payments = db.prepare(`
       SELECT * FROM payments

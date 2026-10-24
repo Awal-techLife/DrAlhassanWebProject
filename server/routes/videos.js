@@ -437,25 +437,30 @@ router.post('/sync-youtube', async (req, res) => {
 
 // PATCH /api/videos/:id/feature — admin only: toggle or set featured status
 router.patch('/:id/feature', authMiddleware, (req, res) => {
-  const { id } = req.params;
-  const video = db.prepare('SELECT * FROM videos WHERE id = ?').get(id);
+  try {
+    const { id } = req.params;
+    const video = db.prepare('SELECT * FROM videos WHERE id = ?').get(id);
 
-  if (!video) return res.status(404).json({ error: 'Video not found' });
+    if (!video) return res.status(404).json({ error: 'Video not found' });
 
-  let newFeatured;
-  if (req.body.is_featured !== undefined) {
-    newFeatured = req.body.is_featured ? 1 : 0;
-  } else {
-    newFeatured = video.is_featured ? 0 : 1;
+    let newFeatured;
+    if (req.body && req.body.is_featured !== undefined) {
+      newFeatured = req.body.is_featured ? 1 : 0;
+    } else {
+      newFeatured = Number(video.is_featured) === 1 ? 0 : 1;
+    }
+
+    db.prepare('UPDATE videos SET is_featured = ? WHERE id = ?').run(newFeatured, id);
+    const updated = db.prepare('SELECT * FROM videos WHERE id = ?').get(id);
+
+    res.json({
+      message: newFeatured ? 'Video added to Featured Showcase!' : 'Video removed from Featured Showcase.',
+      video: updated,
+    });
+  } catch (err) {
+    console.error('Error toggling featured status:', err);
+    res.status(500).json({ error: 'Failed to toggle featured status: ' + (err.message || 'Server error') });
   }
-
-  db.prepare('UPDATE videos SET is_featured = ? WHERE id = ?').run(newFeatured, id);
-  const updated = db.prepare('SELECT * FROM videos WHERE id = ?').get(id);
-
-  res.json({
-    message: newFeatured ? 'Video added to Featured Showcase!' : 'Video removed from Featured Showcase.',
-    video: updated,
-  });
 });
 
 // GET /api/videos/:id — public: single video details
