@@ -95,7 +95,9 @@ export default function ManageVideos() {
     const vid = v.id || v._id;
     setTogglingId(vid);
     try {
-      const res = await API.patch(`/videos/${vid}/feature`);
+      const res = await API.patch(`/videos/${vid}/feature`, {
+        is_featured: Number(v.is_featured) !== 1,
+      });
       const updated = res.data?.video;
       setVideos((prev) =>
         prev.map((item) => ((item.id || item._id) === vid ? { ...item, ...updated } : item))
@@ -105,7 +107,17 @@ export default function ManageVideos() {
       toast.success(msg);
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
-      const msg = err.response?.data?.error || 'Failed to toggle featured status.';
+      if (err.response?.status === 401) {
+        toast.error('Session expired. Please log in again.');
+        localStorage.removeItem('adminToken');
+        window.location.href = '/admin/login';
+        return;
+      }
+      const msg =
+        err.response?.data?.error ||
+        err.response?.data?.message ||
+        err.message ||
+        'Failed to toggle featured status.';
       setError(msg);
       toast.error(msg);
     } finally {
