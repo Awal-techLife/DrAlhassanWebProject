@@ -29,8 +29,9 @@ export default function ManageVideos() {
   const [success, setSuccess]         = useState('');
 
   /* filtering & search */
-  const [activeTab, setActiveTab]     = useState('all'); // 'all' | 'featured' | 'standard'
-  const [searchQuery, setSearchQuery] = useState('');
+  const [activeTab, setActiveTab]         = useState('all'); // 'all' | 'featured' | 'standard'
+  const [categoryFilter, setCategoryFilter] = useState('All');
+  const [searchQuery, setSearchQuery]     = useState('');
 
   /* sync state */
   const [syncing, setSyncing]         = useState(false);
@@ -225,6 +226,14 @@ export default function ManageVideos() {
     [videos]
   );
 
+  const availableCategories = useMemo(() => {
+    const set = new Set();
+    videos.forEach((v) => {
+      if (v.category && v.category.trim()) set.add(v.category.trim());
+    });
+    return ['All', ...Array.from(set).sort()];
+  }, [videos]);
+
   const filteredVideos = useMemo(() => {
     const trimmed = searchQuery.trim().toLowerCase();
     const tokens = trimmed ? trimmed.split(/\s+/).filter(Boolean) : [];
@@ -234,16 +243,19 @@ export default function ManageVideos() {
       if (activeTab === 'featured' && Number(v.is_featured) !== 1) return false;
       if (activeTab === 'standard' && Number(v.is_featured) === 1) return false;
 
-      // Multi-token search query
+      // Category filter
+      if (categoryFilter !== 'All' && v.category !== categoryFilter) return false;
+
+      // Multi-token search query across title, category, description, and youtube URL/id
       if (tokens.length > 0) {
-        const full = `${v.title || ''} ${v.category || ''} ${v.description || ''}`.toLowerCase();
+        const full = `${v.title || ''} ${v.category || ''} ${v.description || ''} ${v.youtube_url || ''} ${v.youtube_id || ''}`.toLowerCase();
         const matchesAll = tokens.every((t) => full.includes(t));
         if (!matchesAll) return false;
       }
 
       return true;
     });
-  }, [videos, activeTab, searchQuery]);
+  }, [videos, activeTab, categoryFilter, searchQuery]);
 
   return (
     <AdminLayout>
@@ -380,9 +392,9 @@ export default function ManageVideos() {
       </section>
 
       {/* ── Filters & Search Controls ─────────────────────────────── */}
-      <div className="mb-6 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
+      <div className="mb-6 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
         {/* Tab Filters */}
-        <div className="flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-1 shadow-sm">
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-1 shadow-sm">
           <button
             onClick={() => setActiveTab('all')}
             className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition cursor-pointer ${
@@ -416,23 +428,42 @@ export default function ManageVideos() {
           </button>
         </div>
 
-        {/* Search */}
-        <div className="relative min-w-[240px]">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search by title or category…"
-            className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 pl-9 pr-3 py-2 text-xs text-slate-800 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500 outline-none transition focus:border-emerald-500 shadow-sm"
-          />
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery('')}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+        {/* Search & Category Filter */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+          {/* Category Dropdown */}
+          <div className="relative">
+            <select
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              className="w-full sm:w-auto rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 py-2 text-xs text-slate-800 dark:text-slate-200 outline-none transition focus:border-emerald-500 shadow-sm cursor-pointer"
             >
-              <X size={13} />
-            </button>
-          )}
+              {availableCategories.map((c) => (
+                <option key={c} value={c}>
+                  Category: {c}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Search Input Bar */}
+          <div className="relative min-w-[280px]">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search uploaded or YouTube videos by title, topic..."
+              className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 pl-9 pr-8 py-2 text-xs text-slate-800 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500 outline-none transition focus:border-emerald-500 shadow-sm"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                title="Clear search"
+              >
+                <X size={13} />
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
