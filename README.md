@@ -109,7 +109,7 @@ The system is pre-configured with active Paystack keys. The fee charged to exter
 
 ---
 
-## 📁 Repository Structure
+##  Repository Structure
 
 ```
 ├── client/                      # React 19 + Vite 8 + Tailwind CSS v4
